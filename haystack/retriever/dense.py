@@ -167,7 +167,7 @@ class DensePassageRetriever(BaseRetriever):
         """
 
 
-        dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
+        dataset, tensor_names, problematic_sample_ids, baskets = self.processor.dataset_from_dicts(
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
 

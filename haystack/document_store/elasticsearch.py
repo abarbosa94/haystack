@@ -7,8 +7,10 @@ from typing import List, Optional, Union, Dict, Any
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan
 from elasticsearch.exceptions import RequestError
+import more_itertools
 import numpy as np
 from scipy.special import expit
+from tqdm import tqdm
 
 from haystack.document_store.base import BaseDocumentStore
 from haystack import Document, Label
@@ -651,7 +653,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                  }
         return stats
 
-    def update_embeddings(self, retriever: BaseRetriever, index: Optional[str] = None):
+    def update_embeddings(self, retriever: BaseRetriever, index: Optional[str] = None, batch_size: Optional[int] = None):
         """
         Updates the embeddings in the the document store using the encoding model specified in the retriever.
         This can be useful if want to add or change the embeddings for your documents (e.g. after changing the retriever config).
@@ -669,7 +671,15 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         # TODO Index embeddings every X batches to avoid OOM for huge document collections
         docs = self.get_all_documents(index)
         logger.info(f"Updating embeddings for {len(docs)} docs ...")
-        embeddings = retriever.embed_passages(docs)  # type: ignore
+        embeddings = []
+        if batch_size is None:
+            batch_size = len(docs)
+        pbar = tqdm(total=len(docs)//batch_size, desc="Fetching Embedding for all data")
+        for chuncked_docks in more_itertools.chunked(docs, batch_size):
+            embedded_chunk = retriever.embed_passages(chuncked_docks)  # type: ignore
+            embeddings.append(embedded_chunk)
+            pbar.update ()
+
         assert len(docs) == len(embeddings)
 
         if embeddings[0].shape[0] != self.embedding_dim:
@@ -677,7 +687,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                                f" doesn't match embedding dim. in DocumentStore ({self.embedding_dim})."
                                "Specify the arg `embedding_dim` when initializing ElasticsearchDocumentStore()")
         doc_updates = []
-        for doc, emb in zip(docs, embeddings):
+        for doc, emb in tqdm(zip(docs, embeddings), total=len(docs)):
             update = {"_op_type": "update",
                       "_index": index,
                       "_id": doc.id,

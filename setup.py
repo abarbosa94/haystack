@@ -47,7 +47,7 @@ parsed_requirements = parse_requirements('requirements.txt')
 
 setup(
     name="farm-haystack",
-    version="0.6.0",
+    version="0.6.1",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni",
     author_email="malte.pietsch@deepset.ai",
     description="Neural Question Answering & Semantic Search at Scale. Use modern transformer based models like BERT to find answers in large document collections",
