@@ -653,7 +653,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                  }
         return stats
 
-    def doc_updates(docs, embeddings):
+    def doc_updates(self,docs, embeddings):
         for doc, emb in tqdm(zip(docs, embeddings), total=len(docs)):
             update = {"_op_type": "update",
                     "_index": index,
@@ -695,7 +695,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
 
             bulk(
                 self.client,
-                doc_updates(chuncked_docks, embedded_chunk),
+                self.doc_updates(chuncked_docks, embedded_chunk),
                 request_timeout=300,
                 refresh=self.refresh_type
             )
