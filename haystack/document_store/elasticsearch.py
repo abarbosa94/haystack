@@ -653,6 +653,15 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                  }
         return stats
 
+    def doc_updates(docs, embeddings):
+        for doc, emb in tqdm(zip(docs, embeddings), total=len(docs)):
+            update = {"_op_type": "update",
+                    "_index": index,
+                    "_id": doc.id,
+                    "doc": {self.embedding_field: emb.tolist()},
+                    }
+            yield (update)
+
     def update_embeddings(self, retriever: BaseRetriever, index: Optional[str] = None, batch_size: Optional[int] = None):
         """
         Updates the embeddings in the the document store using the encoding model specified in the retriever.
@@ -674,28 +683,30 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         embeddings = []
         if batch_size is None:
             batch_size = len(docs)
-        pbar = tqdm(total=len(docs)//batch_size, desc="Fetching Embedding for all data")
+        pbar = tqdm(total=len(docs)//batch_size, desc="Fetching Embedding for all documents")
         for chuncked_docks in more_itertools.chunked(docs, batch_size):
             embedded_chunk = retriever.embed_passages(chuncked_docks)  # type: ignore
-            embeddings.append(embedded_chunk)
-            pbar.update ()
 
-        assert len(docs) == len(embeddings)
+            if embedded_chunk[0].shape[0] != self.embedding_dim:
+                raise RuntimeError(f"Embedding dim. of model ({embeddings[0].shape[0]})"
+                                   f" doesn't match embedding dim. in DocumentStore ({self.embedding_dim})."
+                                   "Specify the arg `embedding_dim` when initializing ElasticsearchDocumentStore()"
+                                   )
 
-        if embeddings[0].shape[0] != self.embedding_dim:
-            raise RuntimeError(f"Embedding dim. of model ({embeddings[0].shape[0]})"
-                               f" doesn't match embedding dim. in DocumentStore ({self.embedding_dim})."
-                               "Specify the arg `embedding_dim` when initializing ElasticsearchDocumentStore()")
-        doc_updates = []
-        for doc, emb in tqdm(zip(docs, embeddings), total=len(docs)):
-            update = {"_op_type": "update",
-                      "_index": index,
-                      "_id": doc.id,
-                      "doc": {self.embedding_field: emb.tolist()},
-                      }
-            doc_updates.append(update)
+            bulk(
+                self.client,
+                doc_updates(chuncked_docks, embedded_chunk),
+                request_timeout=300,
+                refresh=self.refresh_type
+            )
+            embeddings.append(len(embedded_chunk))
+            pbar.update()
 
-        bulk(self.client, doc_updates, request_timeout=300, refresh=self.refresh_type)
+        assert len(docs) == sum(embeddings)
+
+
+
+        
 
     def add_eval_data(self, filename: str, doc_index: str = "eval_document", label_index: str = "label"):
         """
